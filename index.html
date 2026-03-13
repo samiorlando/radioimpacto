@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radios impacto 2026</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="https://i.ibb.co/4R09MvcX/icon.png">
+   
+</head>
+<body>
+
+    <!-- Botón de refrescar en esquina superior derecha -->
+    <button class="refresh-btn" id="refresh-btn" title="Refrescar streaming y reiniciar cronómetro">
+        <i class="fas fa-sync-alt"></i>
+    </button>
+
+    <div class="autoplay-overlay" id="autoplay-overlay">
+        <div class="autoplay-content">
+            <h3 style="margin-bottom: 15px; color: #ffffff; font-size: 20px;">¡Bienvenido a Radios Impacto!</h3>
+            <h3 style="margin-bottom: 12px; color: #ffffff; font-size: 20px;">La primera de anta</h>
+            <p style="margin-bottom: 25px; color: rgba(255,255,255,0.9); line-height: 1.5; font-size: 15px;">Haz clic en el botón para comenzar a escuchar.</p>
+            <button class="autoplay-btn pulse" id="autoplay-btn">
+                <i class="fas fa-play-circle"></i> Iniciar Radio Impacto
+            </button>
+        </div>
+    </div>
+
+    <!-- Contenedor principal para centrar el reproductor -->
+    <div class="main-content">
+        <div class="radio-container" id="radio-container">
+            <div class="radio-header">
+                <h1 class="radio-title">RADIO IMPACTO DE ANTA</h1>
+                <p class="radio-subtitle">Radio en Vivo</p>
+                <p class="station-info">Música las 24 horas</p>
+            </div>
+            
+            <div class="radio-visualizer" id="radio-visualizer">
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+            </div>
+            
+            <div class="loading-animation" id="loading"></div>
+            
+            <div class="radio-controls">
+                <button class="play-btn" id="play-btn">
+                    <i class="fas fa-play"></i>
+                </button>
+            </div>
+            
+            <div class="volume-control">
+                <span><i class="fas fa-volume-down volume-icon"></i></span>
+                <input type="range" min="0" max="1" step="0.01" value="0.7" class="volume-slider" id="volume-slider">
+                <span><i class="fas fa-volume-up volume-icon"></i></span>
+            </div>
+            
+            <!-- Cronómetro agregado -->
+            <div class="timer-container">
+                <i class="fas fa-clock timer-icon"></i>
+                <div class="timer-display" id="timer-display">00:00:00</div>
+            </div>
+            
+            <div class="radio-status" id="status">
+                <i class="fas fa-broadcast-tower"></i> Preparando transmisión...
+            </div>
+            
+            <div class="now-playing" id="now-playing"></div>
+        </div>
+    </div>
+
+    <!-- Footer con transparencia -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-text">Síguenos en nuestras redes sociales</div>
+            <div class="social-icons">
+                <a href="https://www.facebook.com/profile.php?id=61572823527738" target="_blank">
+                    <i class="fab fa-facebook-f"></i>
+                </a>
+                <a href="https://www.facebook.com/profile.php?id=61572823527738" target="_blank">
+                    <i class="fab fa-instagram"></i>
+                </a>
+                <a href="https://www.facebook.com/profile.php?id=61572823527738" target="_blank">
+                    <i class="fab fa-tiktok"></i>
+                </a>
+            </div>
+            <div class="footer-bottom">
+                &copy; Radios impacto de anta - Todos los derechos reservados
+            </div>
+        </div>
+    </footer>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elementos del DOM
+            const audioPlayer = new Audio();
+            const playBtn = document.getElementById('play-btn');
+            const volumeSlider = document.getElementById('volume-slider');
+            const statusElement = document.getElementById('status');
+            const loadingElement = document.getElementById('loading');
+            const nowPlayingElement = document.getElementById('now-playing');
+            const radioContainer = document.querySelector('.radio-container');
+            const autoplayOverlay = document.getElementById('autoplay-overlay');
+            const autoplayBtn = document.getElementById('autoplay-btn');
+            const timerDisplay = document.getElementById('timer-display');
+            const refreshBtn = document.getElementById('refresh-btn');
+            const visualizer = document.getElementById('radio-visualizer');
+            const bars = visualizer.querySelectorAll('.bar');
+            
+            // URL del stream
+            const streamUrl = 'https://sonic.dattassd.com/8132/stream';
+            
+            // Variables de estado
+            let isPlaying = false;
+            let startTime = null;
+            let elapsedTime = 0;
+            let timerInterval = null;
+            
+            // Variables para el análisis de audio
+            let audioContext;
+            let analyser;
+            let source;
+            let dataArray;
+            let bufferLength;
+            let animationId;
+            
+            // Variables para la transición de pausa
+            let isPausing = false;
+            let pauseAnimationId = null;
+            let pauseStartTime = null;
+            const PAUSE_DURATION = 2000; // 2 segundos para la transición de pausa
+            
+            // Inicializar el reproductor
+            function initializePlayer() {
+                console.log('Inicializando reproductor...');
+                
+                // Configurar el reproductor de audio
+                audioPlayer.src = streamUrl;
+                audioPlayer.crossOrigin = "anonymous";
+                audioPlayer.preload = 'none';
+                audioPlayer.volume = volumeSlider.value;
+                
+                // SIEMPRE mostrar el overlay de bienvenida al cargar la página
+                setTimeout(() => {
+                    autoplayOverlay.classList.remove('hidden');
+                }, 500);
+            }
+            
+            // Inicializar el análisis de audio
+            function initializeAudioAnalysis() {
+                try {
+                    // Crear contexto de audio
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    source = audioContext.createMediaElementSource(audioPlayer);
+                    
+                    // Conectar el análisis
+                    source.connect(analyser);
+                    analyser.connect(audioContext.destination);
+                    
+                    // Configurar el analizador
+                    analyser.fftSize = 256; // Aumentar para más detalle en todas las barras
+                    bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Uint8Array(bufferLength);
+                    
+                    console.log('Análisis de audio inicializado correctamente');
+                } catch (error) {
+                    console.error('Error al inicializar el análisis de audio:', error);
+                }
+            }
+            
+            // Función para actualizar el visualizador basado en el audio real
+            function updateVisualizer() {
+                if (!analyser || !isPlaying) {
+                    return;
+                }
+                
+                // Obtener datos de frecuencia
+                analyser.getByteFrequencyData(dataArray);
+                
+                // Calcular el volumen actual (para ajustar la intensidad)
+                const currentVolume = audioPlayer.volume;
+                
+                // Actualizar cada barra - asegurando que todas se muevan
+                bars.forEach((bar, index) => {
+                    // Distribuir las frecuencias a lo largo de todas las barras
+                    // Usar diferentes rangos de frecuencia para cada barra
+                    const freqRange = Math.floor(bufferLength / bars.length);
+                    const startFreq = index * freqRange;
+                    const endFreq = (index + 1) * freqRange;
+                    
+                    // Calcular el promedio de frecuencia para este rango
+                    let sum = 0;
+                    let count = 0;
+                    for (let i = startFreq; i < endFreq && i < bufferLength; i++) {
+                        sum += dataArray[i];
+                        count++;
+                    }
+                    const averageValue = count > 0 ? sum / count : 0;
+                    
+                    // Ajustar la altura según el volumen y el valor de frecuencia
+                    const adjustedValue = averageValue * currentVolume;
+                    
+                    // Calcular altura (mínimo 12px, máximo 60px)
+                    const height = 12 + (adjustedValue / 255) * 48;
+                    bar.style.height = `${height}px`;
+                    
+                    // Cambiar color basado en la altura
+                    if (height > 45) {
+                        bar.style.background = 'linear-gradient(to top, #ff6b6b, #ffa5a5)';
+                    } else if (height > 35) {
+                        bar.style.background = 'linear-gradient(to top, #f9c74f, #f9e5a5)';
+                    } else if (height > 25) {
+                        bar.style.background = 'linear-gradient(to top, #43aa8b, #90d5c5)';
+                    } else {
+                        bar.style.background = 'linear-gradient(to top, #2563eb, #60a5fa)';
+                    }
+                });
+                
+                // Continuar la animación
+                animationId = requestAnimationFrame(updateVisualizer);
+            }
+            
+            // Función para animar la transición de pausa (MÁS LENTA)
+            function animatePauseTransition() {
+                if (!isPausing) return;
+                
+                const currentTime = Date.now();
+                const elapsed = currentTime - pauseStartTime;
+                const progress = Math.min(elapsed / PAUSE_DURATION, 1);
+                
+                // Obtener datos de frecuencia actuales para referencia
+                if (analyser) {
+                    analyser.getByteFrequencyData(dataArray);
+                }
+                
+                // Reducir progresivamente la altura de TODAS las barras
+                bars.forEach((bar, index) => {
+                    // Calcular altura objetivo basada en datos reales pero reducida
+                    let targetHeight = 12; // Altura mínima
+                    
+                    if (analyser && dataArray) {
+                        // Usar la misma lógica que en updateVisualizer pero con progresiva reducción
+                        const freqRange = Math.floor(bufferLength / bars.length);
+                        const startFreq = index * freqRange;
+                        const endFreq = (index + 1) * freqRange;
+                        
+                        let sum = 0;
+                        let count = 0;
+                        for (let i = startFreq; i < endFreq && i < bufferLength; i++) {
+                            sum += dataArray[i];
+                            count++;
+                        }
+                        const averageValue = count > 0 ? sum / count : 0;
+                        
+                        // Reducir progresivamente la influencia del audio real
+                        const reducedValue = averageValue * (1 - progress);
+                        targetHeight = 12 + (reducedValue / 255) * 48 * (1 - progress);
+                    }
+                    
+                    // Aplicar transición suave
+                    bar.style.height = `${targetHeight}px`;
+                    
+                    // Cambiar color progresivamente hacia el azul original
+                    const colorProgress = 1 - progress;
+                    if (colorProgress > 0.6) {
+                        bar.style.background = 'linear-gradient(to top, #ff6b6b, #ffa5a5)';
+                    } else if (colorProgress > 0.4) {
+                        bar.style.background = 'linear-gradient(to top, #f9c74f, #f9e5a5)';
+                    } else if (colorProgress > 0.2) {
+                        bar.style.background = 'linear-gradient(to top, #43aa8b, #90d5c5)';
+                    } else {
+                        bar.style.background = 'linear-gradient(to top, #2563eb, #60a5fa)';
+                    }
+                });
+                
+                // Continuar la animación hasta que se complete la transición
+                if (progress < 1) {
+                    pauseAnimationId = requestAnimationFrame(animatePauseTransition);
+                } else {
+                    // Transición completada - establecer estado final
+                    isPausing = false;
+                    bars.forEach(bar => {
+                        bar.style.height = '12px';
+                        bar.style.background = 'linear-gradient(to top, #2563eb, #60a5fa)';
+                    });
+                }
+            }
+            
+            // Función para iniciar reproducción
+            function startPlayback() {
+                console.log('Iniciando reproducción...');
+                loadingElement.style.display = 'block';
+                statusElement.innerHTML = '<i class="fas fa-broadcast-tower"></i> Conectando...';
+                
+                // Ocultar el overlay de autoplay
+                autoplayOverlay.classList.add('hidden');
+                
+                // Inicializar análisis de audio si no está inicializado
+                if (!audioContext) {
+                    initializeAudioAnalysis();
+                }
+                
+                // Intentar reproducir
+                audioPlayer.play().then(() => {
+                    // Éxito - reproducción iniciada
+                    console.log('Reproducción iniciada con éxito');
+                    isPlaying = true;
+                    isPausing = false;
+                    playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                    statusElement.innerHTML = '<i class="fas fa-broadcast-tower"></i> Transmitiendo en vivo';
+                    radioContainer.classList.add('playing');
+                    radioContainer.classList.remove('paused');
+                    loadingElement.style.display = 'none';
+                    
+                    // Iniciar cronómetro
+                    startTimer();
+                    
+                    // Iniciar visualizador
+                    cancelAnimationFrame(pauseAnimationId);
+                    animationId = requestAnimationFrame(updateVisualizer);
+                    
+                    // Simular información de canción
+                    setTimeout(() => {
+                        nowPlayingElement.textContent = 'Conectado a Tu Zona V.I.P';
+                    }, 1500);
+                }).catch(error => {
+                    // Falló el autoplay - mostrar mensaje
+                    console.log('Error de reproducción:', error);
+                    loadingElement.style.display = 'none';
+                    statusElement.innerHTML = '<i class="fas fa-play-circle"></i> Presiona play para escuchar';
+                    isPlaying = false;
+                    playBtn.innerHTML = '<i class="fas fa-play"></i>';
+                    
+                    // Mostrar mensaje de error específico
+                    if (error.name === 'NotAllowedError') {
+                        statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Permiso de audio denegado. Haz clic en play para escuchar.';
+                    }
+                });
+            }
+            
+            // Función para alternar reproducción
+            function togglePlayback() {
+                if (isPlaying) {
+                    // Iniciar transición de pausa MÁS LENTA
+                    isPausing = true;
+                    pauseStartTime = Date.now();
+                    
+                    // Pausar el audio inmediatamente pero mantener la transición visual
+                    audioPlayer.pause();
+                    playBtn.innerHTML = '<i class="fas fa-play"></i>';
+                    statusElement.innerHTML = '<i class="fas fa-pause-circle"></i> Reproducción pausada';
+                    radioContainer.classList.remove('playing');
+                    radioContainer.classList.add('paused');
+                    nowPlayingElement.textContent = 'Reproducción en pausa';
+                    isPlaying = false;
+                    
+                    // Detener cronómetro
+                    stopTimer();
+                    
+                    // Detener animación del visualizador normal
+                    cancelAnimationFrame(animationId);
+                    
+                    // Iniciar animación de transición de pausa MÁS LENTA
+                    animatePauseTransition();
+                } else {
+                    // Reanudar la reproducción
+                    loadingElement.style.display = 'block';
+                    statusElement.innerHTML = '<i class="fas fa-broadcast-tower"></i> Reconectando...';
+                    
+                    // Detener animación de pausa
+                    isPausing = false;
+                    cancelAnimationFrame(pauseAnimationId);
+                    
+                    // Inicializar análisis de audio si no está inicializado
+                    if (!audioContext) {
+                        initializeAudioAnalysis();
+                    }
+                    
+                    audioPlayer.play().then(() => {
+                        console.log('Reproducción reanudada');
+                        isPlaying = true;
+                        playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                        statusElement.innerHTML = '<i class="fas fa-broadcast-tower"></i> Transmitiendo en vivo';
+                        radioContainer.classList.add('playing');
+                        radioContainer.classList.remove('paused');
+                        loadingElement.style.display = 'none';
+                        
+                        // Reanudar cronómetro
+                        startTimer();
+                        
+                        // Reanudar visualizador
+                        animationId = requestAnimationFrame(updateVisualizer);
+                        
+                        // Restaurar información de canción
+                        nowPlayingElement.textContent = 'Conectado a Aragueña 99.5';
+                    }).catch(error => {
+                        console.log('Error al reanudar:', error);
+                        loadingElement.style.display = 'none';
+                        statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error al conectar. Intenta de nuevo.';
+                        isPlaying = false;
+                        playBtn.innerHTML = '<i class="fas fa-play"></i>';
+                    });
+                }
+            }
+            
+            // Función para actualizar el volumen
+            function updateVolume() {
+                audioPlayer.volume = volumeSlider.value;
+            }
+            
+            // Funciones del cronómetro
+            function startTimer() {
+                if (!startTime) {
+                    startTime = Date.now() - elapsedTime;
+                }
+                
+                timerInterval = setInterval(() => {
+                    const currentTime = Date.now();
+                    elapsedTime = currentTime - startTime;
+                    
+                    const hours = Math.floor(elapsedTime / (1000 * 60 * 60));
+                    const minutes = Math.floor((elapsedTime % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((elapsedTime % (1000 * 60)) / 1000);
+                    
+                    timerDisplay.textContent = 
+                        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }, 1000);
+            }
+            
+            function stopTimer() {
+                clearInterval(timerInterval);
+            }
+            
+            function resetTimer() {
+                stopTimer();
+                startTime = null;
+                elapsedTime = 0;
+                timerDisplay.textContent = '00:00:00';
+            }
+            
+            // Función para refrescar el stream
+            function refreshStream() {
+                console.log('Refrescando stream...');
+                
+                // Agregar clase de carga al botón
+                refreshBtn.classList.add('loading');
+                
+                // Detener reproducción actual
+                if (isPlaying) {
+                    audioPlayer.pause();
+                    isPlaying = false;
+                    playBtn.innerHTML = '<i class="fas fa-play"></i>';
+                    statusElement.innerHTML = '<i class="fas fa-sync-alt"></i> Actualizando...';
+                }
+                
+                // Detener visualizador
+                cancelAnimationFrame(animationId);
+                cancelAnimationFrame(pauseAnimationId);
+                
+                // Resetear barras a estado mínimo
+                bars.forEach(bar => {
+                    bar.style.height = '12px';
+                    bar.style.background = 'linear-gradient(to top, #2563eb, #60a5fa)';
+                });
+                
+                // Resetear cronómetro
+                resetTimer();
+                
+                // Crear nueva instancia de audio
+                audioPlayer.src = streamUrl + '?t=' + new Date().getTime();
+                audioPlayer.load();
+                
+                // Reanudar después de un breve delay
+                setTimeout(() => {
+                    startPlayback();
+                    refreshBtn.classList.remove('loading');
+                }, 1000);
+            }
+            
+            // Event Listeners
+            playBtn.addEventListener('click', togglePlayback);
+            autoplayBtn.addEventListener('click', startPlayback);
+            volumeSlider.addEventListener('input', updateVolume);
+            refreshBtn.addEventListener('click', refreshStream);
+            
+            // Manejo de errores del reproductor
+            audioPlayer.addEventListener('error', function(e) {
+                console.error('Error en el reproductor de audio:', e);
+                loadingElement.style.display = 'none';
+                statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error de conexión. Intenta de nuevo.';
+                isPlaying = false;
+                playBtn.innerHTML = '<i class="fas fa-play"></i>';
+            });
+            
+            // Manejar cuando el audio termina de cargar
+            audioPlayer.addEventListener('canplay', function() {
+                console.log('Audio listo para reproducir');
+                loadingElement.style.display = 'none';
+            });
+            
+            // Manejar cuando el audio está cargando
+            audioPlayer.addEventListener('waiting', function() {
+                console.log('Audio cargando...');
+                if (isPlaying) {
+                    loadingElement.style.display = 'block';
+                    statusElement.innerHTML = '<i class="fas fa-broadcast-tower"></i> Reconectando...';
+                }
+            });
+            
+            // Manejar cuando el audio está reproduciendo nuevamente
+            audioPlayer.addEventListener('playing', function() {
+                console.log('Audio reproduciendo');
+                loadingElement.style.display = 'none';
+                if (isPlaying) {
+                    statusElement.innerHTML = '<i class="fas fa-broadcast-tower"></i> Transmitiendo en vivo';
+                }
+            });
+            
+            // Inicializar el reproductor
+            initializePlayer();
+        });
+    </script>
+</body>
+</html>
